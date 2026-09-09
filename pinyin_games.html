@@ -478,6 +478,154 @@
     75%{transform:rotateY(180deg) translateX(6px);}
   }
 
+  /* ---------- name input & leaderboard entry ---------- */
+  .name-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+    margin-bottom:22px;
+  }
+  .name-row .label{
+    color:var(--cream);
+    font-size:14px;
+    font-weight:600;
+    margin-right:2px;
+  }
+  .name-input{
+    flex:1;
+    min-width:160px;
+    background:var(--paper);
+    border:1.5px solid rgba(251,243,227,0.4);
+    border-radius:999px;
+    padding:10px 16px;
+    font-size:14px;
+    font-weight:600;
+    color:var(--ink);
+    outline:none;
+  }
+  .name-input:focus{border-color:var(--gold);}
+  .name-warn{
+    width:100%;
+    color:var(--red);
+    background:rgba(214,67,47,0.12);
+    border-radius:8px;
+    padding:6px 10px;
+    font-size:12.5px;
+    font-weight:700;
+    display:none;
+  }
+  .name-warn.show{display:block;}
+  .lb-link-btn{
+    display:block;
+    width:100%;
+    background:transparent;
+    border:1.5px solid rgba(251,243,227,0.4);
+    color:var(--gold);
+    border-radius:14px;
+    padding:12px;
+    font-size:14.5px;
+    font-weight:700;
+    cursor:pointer;
+  }
+  .lb-link-btn:hover{background:rgba(251,243,227,0.1);}
+
+  /* ---------- leaderboard screen ---------- */
+  .lb-tabs{display:flex; gap:8px; margin-bottom:16px;}
+  .lb-tab{
+    background:transparent;
+    border:1.5px solid rgba(251,243,227,0.35);
+    color:var(--cream);
+    border-radius:999px;
+    padding:8px 16px;
+    font-size:13.5px;
+    font-weight:700;
+    cursor:pointer;
+  }
+  .lb-tab.active{background:var(--gold); border-color:var(--gold); color:var(--ink-dark);}
+  .lb-panel{
+    background:var(--cream);
+    border-radius:18px;
+    padding:6px 14px;
+    box-shadow:var(--shadow);
+    min-height:80px;
+  }
+  .lb-item{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    padding:11px 6px;
+    border-bottom:1px solid rgba(31,58,61,0.1);
+  }
+  .lb-item:last-child{border-bottom:none;}
+  .lb-rank{
+    width:28px;
+    text-align:center;
+    font-weight:900;
+    font-size:15px;
+    color:var(--ink);
+    flex-shrink:0;
+  }
+  .lb-name{
+    flex:1;
+    font-weight:700;
+    color:var(--ink);
+    font-size:14.5px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+  .lb-meta{font-size:11.5px; color:var(--text-soft); margin-top:2px;}
+  .lb-time{
+    font-weight:800;
+    color:var(--red);
+    font-size:14.5px;
+    flex-shrink:0;
+  }
+  .lb-empty{
+    text-align:center;
+    color:var(--text-soft);
+    font-size:13.5px;
+    padding:28px 10px;
+  }
+  .lb-footer{
+    display:flex;
+    justify-content:flex-end;
+    margin-top:14px;
+  }
+  .lb-reset{
+    background:transparent;
+    border:none;
+    color:rgba(251,243,227,0.55);
+    font-size:12px;
+    text-decoration:underline;
+    cursor:pointer;
+  }
+
+  /* ---------- result rank note ---------- */
+  .result-rank{
+    font-size:13px;
+    font-weight:700;
+    color:var(--jade-dark);
+    background:#F1FAF7;
+    border-radius:10px;
+    padding:8px 10px;
+    margin:0 0 16px;
+  }
+  .btn-tertiary{
+    display:block;
+    width:100%;
+    margin-top:10px;
+    background:transparent;
+    border:none;
+    color:var(--jade-dark);
+    font-weight:700;
+    font-size:13.5px;
+    text-decoration:underline;
+    cursor:pointer;
+    padding:4px;
+  }
+
   /* ---------- completion overlay ---------- */
   .overlay{
     position:fixed;
@@ -612,9 +760,85 @@
 
   var app = document.getElementById("app");
 
-  var state = { mode: 1, wordCount: 12 };
+  var state = { mode: 1, wordCount: 12, playerName: "" };
   var g1 = null; // active game1 session
   var g2 = null; // active game2 session
+
+  /* ============ leaderboard storage ============ */
+  var LB_KEY = "pinyin_pair_leaderboard_v1";
+  var NAME_KEY = "pinyin_pair_player_name";
+
+  // Uses the artifact's persistent storage (shared across everyone playing)
+  // when available, and falls back to this browser's localStorage when the
+  // file is opened outside Claude (so it still works, just per-device).
+  var Store = {
+    hasCloud: (typeof window !== "undefined" && !!window.storage),
+    get: function(key, shared){
+      if (Store.hasCloud){
+        return window.storage.get(key, !!shared)
+          .then(function(r){ return r ? r.value : null; })
+          .catch(function(){ return null; });
+      }
+      try { return Promise.resolve(localStorage.getItem(key)); }
+      catch(e){ return Promise.resolve(null); }
+    },
+    set: function(key, value, shared){
+      if (Store.hasCloud){
+        return window.storage.set(key, value, !!shared)
+          .then(function(r){ return !!r; })
+          .catch(function(){ return false; });
+      }
+      try { localStorage.setItem(key, value); return Promise.resolve(true); }
+      catch(e){ return Promise.resolve(false); }
+    }
+  };
+
+  function loadSavedName(){
+    Store.get(NAME_KEY, false).then(function(v){
+      if (v){
+        state.playerName = v;
+        var input = document.getElementById("playerNameInput");
+        if (input) input.value = v;
+      }
+    });
+  }
+
+  function fetchLeaderboard(){
+    return Store.get(LB_KEY, true).then(function(v){
+      if (!v) return [];
+      try {
+        var arr = JSON.parse(v);
+        return Array.isArray(arr) ? arr : [];
+      } catch(e){ return []; }
+    });
+  }
+
+  function saveScore(mode, elapsedMs, wordCount, name, extraVal, extraLabel){
+    var entry = {
+      name: name, mode: mode, wordCount: wordCount, timeMs: elapsedMs,
+      extraVal: extraVal, extraLabel: extraLabel, at: Date.now()
+    };
+    return fetchLeaderboard().then(function(list){
+      list.push(entry);
+      list.sort(function(a,b){ return a.timeMs - b.timeMs; });
+      if (list.length > 300) list = list.slice(0, 300);
+      return Store.set(LB_KEY, JSON.stringify(list), true).then(function(ok){
+        return { ok: ok, list: list, entry: entry };
+      });
+    });
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, function(c){
+      return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+    });
+  }
+
+  function fmtDate(ts){
+    var d = new Date(ts);
+    function p(n){ return (n<10?'0':'')+n; }
+    return (d.getMonth()+1) + '/' + d.getDate() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
 
   /* ============ utils ============ */
   function shuffle(arr){
@@ -666,13 +890,20 @@
           '<div class="glyphs">🀫 🀫</div>' +
         '</div>' +
       '</div>' +
+      '<div class="name-row">' +
+        '<span class="label">이름</span>' +
+        '<input type="text" class="name-input" id="playerNameInput" placeholder="랭킹에 표시될 이름을 입력하세요" maxlength="12" value="' + escapeHtml(state.playerName || '') + '">' +
+        '<span class="name-warn" id="nameWarn">랭킹에 기록하려면 이름을 입력해 주세요.</span>' +
+      '</div>' +
       '<div class="count-row">' +
         '<span class="label">단어 개수</span>' +
         counts.map(function(c){
           return '<button class="count-chip' + (c===state.wordCount ? ' active' : '') + '" data-count="' + c + '">' + c + '개</button>';
         }).join('') +
       '</div>' +
-      '<button class="start-btn" id="startBtn">시작하기 ▶</button>';
+      '<button class="start-btn" id="startBtn">시작하기 ▶</button>' +
+      '<div style="height:12px;"></div>' +
+      '<button class="lb-link-btn" id="lbBtn">🏆 랭킹 보기</button>';
 
     document.getElementById("modeCard1").addEventListener("click", function(){ setMode(1); });
     document.getElementById("modeCard2").addEventListener("click", function(){ setMode(2); });
@@ -682,10 +913,28 @@
         renderHome();
       });
     });
+    document.getElementById("playerNameInput").addEventListener("input", function(ev){
+      state.playerName = ev.target.value;
+      var warn = document.getElementById("nameWarn");
+      if (ev.target.value.trim()) warn.classList.remove("show");
+    });
     document.getElementById("startBtn").addEventListener("click", function(){
+      var nameInput = document.getElementById("playerNameInput");
+      var name = (nameInput.value || "").trim();
+      if (!name){
+        document.getElementById("nameWarn").classList.add("show");
+        nameInput.focus();
+        return;
+      }
+      state.playerName = name;
+      Store.set(NAME_KEY, name, false);
       if (state.mode === 1) startGame1(); else startGame2();
     });
+    document.getElementById("lbBtn").addEventListener("click", function(){
+      renderLeaderboard(state.mode);
+    });
     highlightMode();
+    loadSavedName();
   }
   function setMode(m){
     state.mode = m;
@@ -697,6 +946,76 @@
     if (!c1) return;
     c1.classList.toggle("active", state.mode === 1);
     c2.classList.toggle("active", state.mode === 2);
+  }
+
+  /* ============ LEADERBOARD SCREEN ============ */
+  function renderLeaderboard(initialMode){
+    var activeMode = initialMode || 1;
+    app.innerHTML =
+      '<div class="game-header">' +
+        '<div class="left">' +
+          '<button class="icon-btn" id="lbBackBtn">← 메인으로</button>' +
+        '</div>' +
+      '</div>' +
+      '<h2 style="color:var(--cream); margin:0 0 4px; font-size:22px;">🏆 랭킹</h2>' +
+      '<p style="color:var(--cream); opacity:.7; font-size:13px; margin:0 0 16px;">가장 빠르게 완료한 순서예요.</p>' +
+      '<div class="lb-tabs">' +
+        '<button class="lb-tab" id="lbTab1">그림-발음 연결</button>' +
+        '<button class="lb-tab" id="lbTab2">카드 뒤집기</button>' +
+      '</div>' +
+      '<div class="lb-panel" id="lbPanel"><div class="lb-empty">불러오는 중…</div></div>' +
+      '<div class="lb-footer">' +
+        '<button class="lb-reset" id="lbResetBtn">랭킹 초기화</button>' +
+      '</div>';
+
+    document.getElementById("lbBackBtn").addEventListener("click", renderHome);
+    document.getElementById("lbTab1").addEventListener("click", function(){ activeMode = 1; refreshTabs(); loadAndRenderList(); });
+    document.getElementById("lbTab2").addEventListener("click", function(){ activeMode = 2; refreshTabs(); loadAndRenderList(); });
+    document.getElementById("lbResetBtn").addEventListener("click", function(){
+      if (!confirm("모든 랭킹 기록을 지울까요? 되돌릴 수 없어요.")) return;
+      Store.set(LB_KEY, JSON.stringify([]), true).then(function(){ loadAndRenderList(); });
+    });
+
+    function refreshTabs(){
+      document.getElementById("lbTab1").classList.toggle("active", activeMode === 1);
+      document.getElementById("lbTab2").classList.toggle("active", activeMode === 2);
+    }
+
+    function medal(rank){
+      if (rank === 1) return '🥇';
+      if (rank === 2) return '🥈';
+      if (rank === 3) return '🥉';
+      return String(rank);
+    }
+
+    function loadAndRenderList(){
+      var panel = document.getElementById("lbPanel");
+      panel.innerHTML = '<div class="lb-empty">불러오는 중…</div>';
+      fetchLeaderboard().then(function(list){
+        var filtered = list.filter(function(e){ return e.mode === activeMode; })
+          .sort(function(a,b){ return a.timeMs - b.timeMs; })
+          .slice(0, 20);
+        if (filtered.length === 0){
+          panel.innerHTML = '<div class="lb-empty">아직 기록이 없어요. 첫 기록의 주인공이 되어 보세요!</div>';
+          return;
+        }
+        panel.innerHTML = filtered.map(function(e, idx){
+          var extra = (typeof e.extraVal === 'number' && e.extraLabel)
+            ? ' · ' + e.extraLabel + ' ' + e.extraVal + '회' : '';
+          return '<div class="lb-item">' +
+            '<div class="lb-rank">' + medal(idx+1) + '</div>' +
+            '<div style="flex:1; min-width:0;">' +
+              '<div class="lb-name">' + escapeHtml(e.name) + '</div>' +
+              '<div class="lb-meta">' + e.wordCount + '개' + extra + ' · ' + fmtDate(e.at) + '</div>' +
+            '</div>' +
+            '<div class="lb-time">' + fmtTime(e.timeMs) + '</div>' +
+          '</div>';
+        }).join('');
+      });
+    }
+
+    refreshTabs();
+    loadAndRenderList();
   }
 
   /* ============ GAME 1: drag & drop match ============ */
@@ -976,15 +1295,17 @@
 
   /* ============ completion overlay + confetti ============ */
   function showCompletion(mode){
-    var elapsed, attemptsLabel, attemptsVal;
+    var elapsed, attemptsLabel, attemptsVal, wordCount;
     if (mode === 1){
       elapsed = Date.now() - g1.startTime;
       attemptsLabel = "실수";
       attemptsVal = g1.mistakes;
+      wordCount = g1.total;
     } else {
       elapsed = Date.now() - g2.startTime;
       attemptsLabel = "시도 횟수";
       attemptsVal = g2.attempts;
+      wordCount = g2.totalPairs;
     }
     var overlay = el(
       '<div class="overlay">' +
@@ -992,6 +1313,7 @@
           '<div class="big-emoji">🎉</div>' +
           '<h3>모두 완성했어요!</h3>' +
           '<p class="sub">단어를 잘 기억하고 있네요.</p>' +
+          '<div class="result-rank" id="rankInfo">랭킹에 기록하는 중…</div>' +
           '<div class="result-stats">' +
             '<div><span class="num">' + fmtTime(elapsed) + '</span><span class="lbl">걸린 시간</span></div>' +
             '<div><span class="num">' + attemptsVal + '</span><span class="lbl">' + attemptsLabel + '</span></div>' +
@@ -1000,6 +1322,7 @@
             '<button class="btn-secondary" id="toHomeBtn">메인으로</button>' +
             '<button class="btn-primary" id="retryBtn">다시 섞기</button>' +
           '</div>' +
+          '<button class="btn-tertiary" id="viewLbBtn">🏆 전체 랭킹 보기</button>' +
         '</div>' +
       '</div>'
     );
@@ -1011,7 +1334,30 @@
       overlay.remove();
       if (mode === 1) startGame1(); else startGame2();
     });
+    document.getElementById("viewLbBtn").addEventListener("click", function(){
+      overlay.remove();
+      renderLeaderboard(mode);
+    });
     fireConfetti();
+
+    var name = (state.playerName || "").trim() || "이름없음";
+    saveScore(mode, elapsed, wordCount, name, attemptsVal, attemptsLabel).then(function(res){
+      var rankEl = document.getElementById("rankInfo");
+      if (!rankEl) return;
+      if (!res || !res.ok){
+        rankEl.textContent = "랭킹 저장에 실패했어요. (기록 보기는 계속 이용할 수 있어요)";
+        return;
+      }
+      var sameMode = res.list.filter(function(e){ return e.mode === mode; });
+      var rank = sameMode.findIndex(function(e){ return e.at === res.entry.at && e.name === res.entry.name; }) + 1;
+      if (rank === 1){
+        rankEl.textContent = "🎉 " + name + "님, 이 게임 전체 1등이에요!";
+      } else if (rank > 0){
+        rankEl.textContent = name + "님의 기록은 전체 " + rank + "위예요.";
+      } else {
+        rankEl.textContent = "랭킹에 기록되었어요.";
+      }
+    });
   }
 
   function fireConfetti(){
