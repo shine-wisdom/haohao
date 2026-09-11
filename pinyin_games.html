@@ -566,6 +566,19 @@
   .timer-step:hover{background:rgba(251,243,227,0.15);}
   .timer-colon{color:var(--cream); font-size:13px; opacity:.8;}
 
+  .rotate-hint{
+    display:none;
+    text-align:center;
+    font-size:12.5px;
+    font-weight:600;
+    color:var(--cream);
+    opacity:.75;
+    margin:-6px 0 12px;
+  }
+  @media (orientation: portrait) and (max-width: 600px){
+    .rotate-hint{display:block;}
+  }
+
   /* ---------- big in-game countdown (card-flip mode) ---------- */
   .timer-big-wrap{
     display:flex;
@@ -1412,6 +1425,7 @@
           '<span class="stat-pill">시도 <b id="attemptStat">0</b></span>' +
         '</div>' +
       '</div>' +
+      '<div class="rotate-hint">📱 화면을 가로로 돌리면 카드가 더 크게 보여요</div>' +
       (limitSec > 0 ?
         '<div class="timer-big-wrap">' +
           '<div class="timer-big" id="timerBigBox">' +
@@ -1445,11 +1459,54 @@
       grid.appendChild(cardEl);
       cardEl.addEventListener("click", function(){ onCardClick(cardEl); });
     });
+    layoutFlipGrid();
 
     if (limitSec > 0){
       g2.timerId = setInterval(tickGame2Timer, 1000);
     }
   }
+
+  // Sizes the flip-grid so every card fits on screen at once (no scrolling
+  // needed to see the whole board) — recalculated on resize/rotation so it
+  // works the same on desktop and on narrow mobile screens.
+  function layoutFlipGrid(){
+    var grid = document.getElementById("flipGrid");
+    if (!grid) return;
+    var n = grid.children.length;
+    if (!n) return;
+    var gap = 12;
+    var containerW = grid.clientWidth || (grid.parentElement && grid.parentElement.clientWidth) || window.innerWidth;
+    var top = grid.getBoundingClientRect().top;
+    var availH = window.innerHeight - top - 14;
+
+    function findColumns(minCardW, maxCols){
+      var maxC = Math.min(n, maxCols);
+      for (var c = 1; c <= maxC; c++){
+        var rows = Math.ceil(n / c);
+        var cardW = (containerW - gap * (c - 1)) / c;
+        if (cardW < minCardW) continue;
+        var cardH = cardW * 4 / 3;
+        var totalH = rows * cardH + gap * (rows - 1);
+        if (totalH <= availH) return c;
+      }
+      return null;
+    }
+
+    // Prefer comfortably-sized cards; if that can't fit without scrolling,
+    // allow smaller cards; as a last resort just use as many columns as
+    // possible so there's the least amount of scrolling.
+    var bestC = findColumns(80, 8) || findColumns(50, 12) || Math.min(n, 12);
+    grid.style.gridTemplateColumns = "repeat(" + bestC + ", 1fr)";
+  }
+
+  var flipGridResizeTimer = null;
+  function scheduleFlipGridLayout(){
+    if (!document.getElementById("flipGrid")) return;
+    if (flipGridResizeTimer) clearTimeout(flipGridResizeTimer);
+    flipGridResizeTimer = setTimeout(layoutFlipGrid, 120);
+  }
+  window.addEventListener("resize", scheduleFlipGridLayout);
+  window.addEventListener("orientationchange", scheduleFlipGridLayout);
 
   function stopGame2Timer(){
     if (g2 && g2.timerId){
